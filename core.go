@@ -37,7 +37,7 @@ func InitDB(app_name string) *DB {
 	return &db
 }
 
-func verifySession(options *sessmodels.VerifySessionOptions) gin.HandlerFunc {
+func VerifySession(options *sessmodels.VerifySessionOptions) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		session.VerifySession(options, func(rw http.ResponseWriter, r *http.Request) {
 			c.Request = c.Request.WithContext(r.Context())
