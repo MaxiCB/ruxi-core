@@ -90,9 +90,69 @@ func RuxiLogger() gin.HandlerFunc {
 
 func InitLogger(service_name string) {
 	f, _ := os.Create(fmt.Sprintf("%s.log", service_name))
-	InfoLogger = log.New(f, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-	InfoLogger = log.New(f, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	InfoLogger = log.New(f, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+	ErrorLogger = log.New(io.MultiWriter(f, os.Stdout), "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	InfoLogger = log.New(io.MultiWriter(f, os.Stdout), "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	WarningLogger = log.New(io.MultiWriter(f, os.Stdout), "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+func LogInfo(err string, c *gin.Context) {
+	if InfoLogger == nil {
+		panic("InfoLogger not initialized")
+	}
+	if c != nil {
+		request := c.Request
+		request.ParseForm()
+		request_info, _ := fmt.Printf("[%s] '%s' {%s} - %s",
+			request.Method,
+			request.URL,
+			request.PostForm,
+			err,
+		)
+		InfoLogger.Panicln(request_info)
+	} else {
+		InfoLogger.Panicln(err)
+	}
+
+}
+
+func LogError(err string, c *gin.Context) {
+	if ErrorLogger == nil {
+		panic("ErrorLogger not initialized")
+	}
+	if c != nil {
+		request := c.Request
+		request.ParseForm()
+		request_info, _ := fmt.Printf("[%s] '%s' {%s} - %s",
+			request.Method,
+			request.URL,
+			request.PostForm,
+			err,
+		)
+		ErrorLogger.Panicln(request_info)
+	} else {
+		ErrorLogger.Panicln(err)
+	}
+
+}
+
+func LogWarning(err string, c *gin.Context) {
+	if WarningLogger == nil {
+		panic("WarningLogger not initialized")
+	}
+	if c != nil {
+		request := c.Request
+		request.ParseForm()
+		request_info, _ := fmt.Printf("[%s] '%s' {%s} - %s",
+			request.Method,
+			request.URL,
+			request.PostForm,
+			err,
+		)
+		WarningLogger.Panicln(request_info)
+	} else {
+		WarningLogger.Panicln(err)
+	}
+
 }
 
 func RuxiGin() *gin.Engine {
