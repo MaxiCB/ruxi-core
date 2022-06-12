@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -18,6 +19,12 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 	"github.com/uptrace/bun/driver/pgdriver"
 	"github.com/uptrace/bun/extra/bundebug"
+)
+
+var (
+	ErrorLogger   *log.Logger
+	InfoLogger    *log.Logger
+	WarningLogger *log.Logger
 )
 
 type DB struct {
@@ -65,11 +72,10 @@ func HealthCheck(c *gin.Context) {
 
 func RuxiLogger() gin.HandlerFunc {
 	gin.DisableConsoleColor()
-	f, _ := os.Create("ruxi.log")
+	f, _ := os.Create("ruxi-gin.log")
 	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
 	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		return fmt.Sprintf("%s - [%s] \"%s %s %s %d %s \"%s\" %s\"\n",
-			param.ClientIP,
+		return fmt.Sprintf("[%s] \"%s %s %s %d %s \"%s\" %s\"\n",
 			param.TimeStamp.Format(time.RFC1123),
 			param.Method,
 			param.Path,
@@ -80,6 +86,13 @@ func RuxiLogger() gin.HandlerFunc {
 			param.ErrorMessage,
 		)
 	})
+}
+
+func InitLogger(service_name string) {
+	f, _ := os.Create(fmt.Sprintf("%s.log", service_name))
+	InfoLogger = log.New(f, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	InfoLogger = log.New(f, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	InfoLogger = log.New(f, "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
 }
 
 func RuxiGin() *gin.Engine {
