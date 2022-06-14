@@ -72,7 +72,7 @@ func HealthCheck(c *gin.Context) {
 
 func RuxiLogger() gin.HandlerFunc {
 	gin.DisableConsoleColor()
-	f, _ := os.Create("ruxi-gin.log")
+	f, _ := os.Create("/log/ruxi-gin.log")
 	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
 	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("[%s] \"%s %s %s %d %s \"%s\" %s\"\n",
@@ -89,7 +89,7 @@ func RuxiLogger() gin.HandlerFunc {
 }
 
 func InitLogger(service_name string) {
-	f, _ := os.Create(fmt.Sprintf("%s.log", service_name))
+	f, _ := os.Create(fmt.Sprintf("/log/%s.log", service_name))
 	ErrorLogger = log.New(io.MultiWriter(f, os.Stdout), "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 	InfoLogger = log.New(io.MultiWriter(f, os.Stdout), "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	WarningLogger = log.New(io.MultiWriter(f, os.Stdout), "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
