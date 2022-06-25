@@ -12,6 +12,8 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/stdlib"
 	"github.com/supertokens/supertokens-golang/recipe/session"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"github.com/supertokens/supertokens-golang/supertokens"
@@ -35,6 +37,11 @@ type DB struct {
 }
 
 func InitDB(app_name string) *DB {
+	conf, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
+		os.Exit(1)
+	}
 	db := DB{}
 	db.connection = pgdriver.NewConnector(
 		pgdriver.WithAddr(os.Getenv("DB_HOST")+":"+os.Getenv("DB_PORT")),
@@ -44,7 +51,7 @@ func InitDB(app_name string) *DB {
 		pgdriver.WithApplicationName(app_name),
 		pgdriver.WithInsecure(true),
 	)
-	db.SqlDB = sql.OpenDB(db.connection)
+	db.SqlDB = stdlib.OpenDB(*conf)
 	db.BunDB = bun.NewDB(db.SqlDB, pgdialect.New())
 	db.Context = context.Background()
 	if os.Getenv("DB_LOGS") != "" {
