@@ -29,6 +29,23 @@ var (
 	WarningLogger *log.Logger
 )
 
+func If[T any](cond bool, vtrue, vfalse T) T {
+	if cond {
+		return vtrue
+	}
+	return vfalse
+}
+
+type DBAuth struct {
+	URL      string
+	Host     string
+	Port     string
+	Username string
+	Password string
+	Name     string
+	Logging  bool
+}
+
 type DB struct {
 	connection *pgdriver.Connector
 	SqlDB      *sql.DB
@@ -36,25 +53,39 @@ type DB struct {
 	Context    context.Context
 }
 
+func GatherAuth() *DBAuth {
+	dbAuth := DBAuth{
+		os.Getenv("DATABASE_URL"),
+		os.Getenv("DATABASE_HOST"),
+		os.Getenv("DATABASE_PORT"),
+		os.Getenv("DATABASE_USERNAME"),
+		os.Getenv("DATABASE_PASSWORD"),
+		os.Getenv("DATABASE_NAME"),
+		If(os.Getenv("DATABASE_LOGGING") == "TRUE", true, false),
+	}
+	return &dbAuth
+}
+
 func InitDB(app_name string) *DB {
-	conf, err := pgx.ParseConfig(os.Getenv("DATABASE_URL"))
+	dbAuth := GatherAuth()
+	conf, err := pgx.ParseConfig(dbAuth.URL)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
 	db := DB{}
 	db.connection = pgdriver.NewConnector(
-		pgdriver.WithAddr(os.Getenv("DB_HOST")+":"+os.Getenv("DB_PORT")),
-		pgdriver.WithUser(os.Getenv("DB_USERNAME")),
-		pgdriver.WithPassword(os.Getenv("DB_PASSWORD")),
-		pgdriver.WithDatabase(os.Getenv("DB")),
+		pgdriver.WithAddr(dbAuth.Host+":"+dbAuth.Port),
+		pgdriver.WithUser(dbAuth.Username),
+		pgdriver.WithPassword(dbAuth.Password),
+		pgdriver.WithDatabase(dbAuth.Name),
 		pgdriver.WithApplicationName(app_name),
 		pgdriver.WithInsecure(true),
 	)
 	db.SqlDB = stdlib.OpenDB(*conf)
 	db.BunDB = bun.NewDB(db.SqlDB, pgdialect.New())
 	db.Context = context.Background()
-	if os.Getenv("DB_LOGS") != "" {
+	if dbAuth.Logging {
 		db.BunDB.AddQueryHook(bundebug.NewQueryHook(bundebug.WithVerbose(true)))
 	}
 	if dbErr := db.BunDB.Ping(); dbErr != nil {
