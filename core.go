@@ -60,7 +60,7 @@ func GatherAuth() *DBAuth {
 
 func InitDB(app_name string) *DB {
 	//dbAuth := GatherAuth()
-	dsn := "host=ruxi-backend user=postgres password=password dbname=postgres port=5432 sslmode=disabled"
+	dsn := "host=ruxi-backend user=postgres password=password dbname=postgres port=5432 sslmode=disable"
 	fmt.Print(dsn)
 
 	newLogger := logger.New(
