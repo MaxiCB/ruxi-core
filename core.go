@@ -49,19 +49,18 @@ type DB struct {
 func GatherAuth() *DBAuth {
 	dbAuth := DBAuth{
 		os.Getenv("DATABASE_URL"),
-		os.Getenv("DATABASE_HOST"),
-		os.Getenv("DATABASE_PORT"),
-		os.Getenv("DATABASE_USERNAME"),
-		os.Getenv("DATABASE_PASSWORD"),
-		os.Getenv("DATABASE_NAME"),
+		os.Getenv("DB_HOST"),
+		os.Getenv("DB_PORT"),
+		os.Getenv("DB_USERNAME"),
+		os.Getenv("DB_PASSWORD"),
+		os.Getenv("DB"),
 	}
 	return &dbAuth
 }
 
 func InitDB(app_name string) *DB {
-	//dbAuth := GatherAuth()
-	dsn := "host=ruxi_ruxi-backend user=postgres password=password dbname=postgres port=5432 sslmode=disable"
-	fmt.Print(dsn)
+	dbAuth := GatherAuth()
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable", dbAuth.Host, dbAuth.Username, dbAuth.Password, dbAuth.Name, dbAuth.Port)
 
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
