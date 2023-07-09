@@ -2,7 +2,6 @@ package ruxicore
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -12,15 +11,12 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v4"
-	"github.com/jackc/pgx/v4/stdlib"
 	"github.com/supertokens/supertokens-golang/recipe/session"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"github.com/supertokens/supertokens-golang/supertokens"
-	"github.com/uptrace/bun"
-	"github.com/uptrace/bun/dialect/pgdialect"
-	"github.com/uptrace/bun/driver/pgdriver"
-	"github.com/uptrace/bun/extra/bundebug"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
@@ -43,14 +39,11 @@ type DBAuth struct {
 	Username string
 	Password string
 	Name     string
-	Logging  bool
 }
 
 type DB struct {
-	connection *pgdriver.Connector
-	SqlDB      *sql.DB
-	BunDB      *bun.DB
-	Context    context.Context
+	DB      *gorm.DB
+	Context context.Context
 }
 
 func GatherAuth() *DBAuth {
@@ -61,36 +54,35 @@ func GatherAuth() *DBAuth {
 		os.Getenv("DATABASE_USERNAME"),
 		os.Getenv("DATABASE_PASSWORD"),
 		os.Getenv("DATABASE_NAME"),
-		If(os.Getenv("DATABASE_LOGGING") == "TRUE", true, false),
 	}
 	return &dbAuth
 }
 
 func InitDB(app_name string) *DB {
 	dbAuth := GatherAuth()
-	conf, err := pgx.ParseConfig(dbAuth.URL)
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disabled", dbAuth.Host, dbAuth.Username, dbAuth.Password, dbAuth.Name, dbAuth.Port)
+	fmt.Print(dsn)
+
+	newLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             time.Second,
+			LogLevel:                  logger.Silent,
+			IgnoreRecordNotFoundError: true,
+			ParameterizedQueries:      true,
+			Colorful:                  false,
+		},
+	)
+	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		Logger: newLogger,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
 		os.Exit(1)
 	}
 	db := DB{}
-	db.connection = pgdriver.NewConnector(
-		pgdriver.WithAddr(dbAuth.Host+":"+dbAuth.Port),
-		pgdriver.WithUser(dbAuth.Username),
-		pgdriver.WithPassword(dbAuth.Password),
-		pgdriver.WithDatabase(dbAuth.Name),
-		pgdriver.WithApplicationName(app_name),
-		pgdriver.WithInsecure(true),
-	)
-	db.SqlDB = stdlib.OpenDB(*conf)
-	db.BunDB = bun.NewDB(db.SqlDB, pgdialect.New())
+	db.DB = gdb
 	db.Context = context.Background()
-	if dbAuth.Logging {
-		db.BunDB.AddQueryHook(bundebug.NewQueryHook(bundebug.WithVerbose(true)))
-	}
-	if dbErr := db.BunDB.Ping(); dbErr != nil {
-		panic(dbErr)
-	}
 	return &db
 }
 
@@ -110,7 +102,7 @@ func HealthCheck(c *gin.Context) {
 
 func RuxiLogger() gin.HandlerFunc {
 	gin.DisableConsoleColor()
-	f, _ := os.Create("/log/ruxi-gin.log")
+	f, _ := os.Create(fmt.Sprintf("%s/ruxi-gin.log", os.TempDir()))
 	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
 	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
 		return fmt.Sprintf("[%s] \"%s %s %s %d %s \"%s\" %s\"\n",
@@ -127,7 +119,7 @@ func RuxiLogger() gin.HandlerFunc {
 }
 
 func InitLogger(service_name string) {
-	f, _ := os.Create(fmt.Sprintf("/log/%s.log", service_name))
+	f, _ := os.Create(fmt.Sprintf("%s/%s.log", os.TempDir(), service_name))
 	ErrorLogger = log.New(io.MultiWriter(f, os.Stdout), "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 	InfoLogger = log.New(io.MultiWriter(f, os.Stdout), "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	WarningLogger = log.New(io.MultiWriter(f, os.Stdout), "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
