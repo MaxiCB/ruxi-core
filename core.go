@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
@@ -14,9 +15,37 @@ import (
 	"github.com/supertokens/supertokens-golang/recipe/session"
 	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
 	"github.com/supertokens/supertokens-golang/supertokens"
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+)
+
+type DBAuth struct {
+	URL      string
+	Host     string
+	Port     string
+	Username string
+	Password string
+	Name     string
+}
+
+type DB struct {
+	DB      *gorm.DB
+	Context context.Context
+}
+type LogLevel struct {
+	slug string
+}
+
+type LogMessage struct {
+	LogType    LogLevel
+	Message    string
+	GinContext *gin.Context //optional
+}
+
+var (
+	ERROR   = LogLevel{"ERROR"}
+	WARNING = LogLevel{"WARNING"}
+	INFO    = LogLevel{"INFO"}
 )
 
 var (
@@ -32,20 +61,6 @@ func If[T any](cond bool, vtrue, vfalse T) T {
 	return vfalse
 }
 
-type DBAuth struct {
-	URL      string
-	Host     string
-	Port     string
-	Username string
-	Password string
-	Name     string
-}
-
-type DB struct {
-	DB      *gorm.DB
-	Context context.Context
-}
-
 func GatherAuth() *DBAuth {
 	dbAuth := DBAuth{
 		os.Getenv("DATABASE_URL"),
@@ -58,10 +73,7 @@ func GatherAuth() *DBAuth {
 	return &dbAuth
 }
 
-func InitDB(app_name string) *DB {
-	dbAuth := GatherAuth()
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable", dbAuth.Host, dbAuth.Username, dbAuth.Password, dbAuth.Name, dbAuth.Port)
-
+func InitDB(dialector gorm.Dialector) (*DB, error) {
 	newLogger := logger.New(
 		log.New(os.Stdout, "\r\n", log.LstdFlags),
 		logger.Config{
@@ -72,17 +84,17 @@ func InitDB(app_name string) *DB {
 			Colorful:                  false,
 		},
 	)
-	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+	gdb, err := gorm.Open(dialector, &gorm.Config{
 		Logger: newLogger,
 	})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		fmt.Fprintf(ErrorLogger.Writer(), "Unable to connect to database: %v\n", err)
+		return nil, err
 	}
 	db := DB{}
 	db.DB = gdb
 	db.Context = context.Background()
-	return &db
+	return &db, nil
 }
 
 func VerifySession(options *sessmodels.VerifySessionOptions) gin.HandlerFunc {
@@ -99,108 +111,86 @@ func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "UP"})
 }
 
-func RuxiLogger() gin.HandlerFunc {
-	gin.DisableConsoleColor()
-	f, _ := os.Create(fmt.Sprintf("%s/ruxi-gin.log", os.TempDir()))
-	gin.DefaultWriter = io.MultiWriter(f, os.Stdout)
-	return gin.LoggerWithFormatter(func(param gin.LogFormatterParams) string {
-		return fmt.Sprintf("[%s] \"%s %s %s %d %s \"%s\" %s\"\n",
-			param.TimeStamp.Format(time.RFC1123),
-			param.Method,
-			param.Path,
-			param.Request.Proto,
-			param.StatusCode,
-			param.Latency,
-			param.Request.UserAgent(),
-			param.ErrorMessage,
-		)
-	})
+func RuxiLogFormatter(param gin.LogFormatterParams) string {
+	return fmt.Sprintf("[%s] \"%s %s %s %d %s \"%s\" %s\"\n",
+		param.TimeStamp.Format(time.RFC1123),
+		param.Method,
+		param.Path,
+		param.Request.Proto,
+		param.StatusCode,
+		param.Latency,
+		param.Request.UserAgent(),
+		param.ErrorMessage,
+	)
 }
 
-func InitLogger(service_name string) {
-	f, _ := os.Create(fmt.Sprintf("%s/%s.log", os.TempDir(), service_name))
-	ErrorLogger = log.New(io.MultiWriter(f, os.Stdout), "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-	InfoLogger = log.New(io.MultiWriter(f, os.Stdout), "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	WarningLogger = log.New(io.MultiWriter(f, os.Stdout), "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+func RuxiLogger(writers ...io.Writer) gin.HandlerFunc {
+	gin.DefaultWriter = io.MultiWriter(writers...)
+	return gin.LoggerWithFormatter(RuxiLogFormatter)
 }
 
-func LogInfo(err string, c *gin.Context) {
-	if InfoLogger == nil {
-		panic("InfoLogger not initialized")
-	}
-	if c != nil {
-		request := c.Request
+func InitLogger(service_name string, writers ...io.Writer) {
+	ErrorLogger = log.New(io.MultiWriter(writers...), "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+	InfoLogger = log.New(io.MultiWriter(writers...), "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	WarningLogger = log.New(io.MultiWriter(writers...), "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
+}
+
+func Log(message LogMessage) {
+	var logMessage string
+	if message.GinContext != nil {
+		request := message.GinContext.Request
 		request.ParseForm()
-		request_info, _ := fmt.Printf("[%s] '%s' {%s} - %s",
+		logMessage = fmt.Sprintf("[%s] '%s' {%s} - %s",
 			request.Method,
 			request.URL,
 			request.PostForm,
-			err,
+			message.Message,
 		)
-		InfoLogger.Println(request_info)
 	} else {
-		InfoLogger.Println(err)
+		logMessage = message.Message
 	}
 
+	switch message.LogType.slug {
+	case ERROR.slug:
+		ErrorLogger.Println(logMessage)
+	case INFO.slug:
+		InfoLogger.Println(logMessage)
+	case WARNING.slug:
+		WarningLogger.Println(logMessage)
+	}
 }
 
-func LogError(err string, c *gin.Context) {
-	if ErrorLogger == nil {
-		panic("ErrorLogger not initialized")
+func GatherCorsAllowHeaders() []string {
+	allowHeaders := []string{"content-type"}
+	env := os.Getenv("production")
+	if strings.EqualFold("production", env) {
+		allowHeaders = append(allowHeaders, supertokens.GetAllCORSHeaders()...)
 	}
-	if c != nil {
-		request := c.Request
-		request.ParseForm()
-		request_info, _ := fmt.Printf("[%s] '%s' {%s} - %s",
-			request.Method,
-			request.URL,
-			request.PostForm,
-			err,
-		)
-		ErrorLogger.Println(request_info)
-	} else {
-		ErrorLogger.Println(err)
-	}
-
+	return allowHeaders
 }
 
-func LogWarning(err string, c *gin.Context) {
-	if WarningLogger == nil {
-		panic("WarningLogger not initialized")
+func AddSuperTokens(router *gin.Engine) {
+	env := os.Getenv("production")
+	if strings.EqualFold("production", env) {
+		router.Use(func(c *gin.Context) {
+			supertokens.Middleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+				c.Next()
+			})).ServeHTTP(c.Writer, c.Request)
+			c.Abort()
+		})
 	}
-	if c != nil {
-		request := c.Request
-		request.ParseForm()
-		request_info, _ := fmt.Printf("[%s] '%s' {%s} - %s",
-			request.Method,
-			request.URL,
-			request.PostForm,
-			err,
-		)
-		WarningLogger.Println(request_info)
-	} else {
-		WarningLogger.Println(err)
-	}
-
 }
 
 func RuxiGin() *gin.Engine {
 	router := gin.Default()
+	gin.DisableConsoleColor()
 	router.Use(RuxiLogger())
 	router.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"*"},
-		AllowMethods: []string{"GET", "POST", "DELETE", "PUT", "OPTIONS"},
-		AllowHeaders: append([]string{"content-type"},
-			supertokens.GetAllCORSHeaders()...),
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "DELETE", "PUT", "OPTIONS"},
+		AllowHeaders:     GatherCorsAllowHeaders(),
 		AllowCredentials: true,
 	}))
-
-	router.Use(func(c *gin.Context) {
-		supertokens.Middleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-			c.Next()
-		})).ServeHTTP(c.Writer, c.Request)
-		c.Abort()
-	})
 
 	router.GET("/liveness", HealthCheck)
 	return router
