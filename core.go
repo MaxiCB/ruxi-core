@@ -7,14 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"strings"
 	"time"
 
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
-	"github.com/supertokens/supertokens-golang/recipe/session"
-	"github.com/supertokens/supertokens-golang/recipe/session/sessmodels"
-	"github.com/supertokens/supertokens-golang/supertokens"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -97,16 +92,6 @@ func InitDB(dialector gorm.Dialector) (*DB, error) {
 	return &db, nil
 }
 
-func VerifySession(options *sessmodels.VerifySessionOptions) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		session.VerifySession(options, func(rw http.ResponseWriter, r *http.Request) {
-			c.Request = c.Request.WithContext(r.Context())
-			c.Next()
-		})(c.Writer, c.Request)
-		c.Abort()
-	}
-}
-
 func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "UP"})
 }
@@ -160,37 +145,10 @@ func Log(message LogMessage) {
 	}
 }
 
-func GatherCorsAllowHeaders() []string {
-	allowHeaders := []string{"content-type"}
-	env := os.Getenv("production")
-	if strings.EqualFold("production", env) {
-		allowHeaders = append(allowHeaders, supertokens.GetAllCORSHeaders()...)
-	}
-	return allowHeaders
-}
-
-func AddSuperTokens(router *gin.Engine) {
-	env := os.Getenv("production")
-	if strings.EqualFold("production", env) {
-		router.Use(func(c *gin.Context) {
-			supertokens.Middleware(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
-				c.Next()
-			})).ServeHTTP(c.Writer, c.Request)
-			c.Abort()
-		})
-	}
-}
-
 func RuxiGin() *gin.Engine {
 	router := gin.Default()
 	gin.DisableConsoleColor()
 	router.Use(RuxiLogger())
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"*"},
-		AllowMethods:     []string{"GET", "POST", "DELETE", "PUT", "OPTIONS"},
-		AllowHeaders:     GatherCorsAllowHeaders(),
-		AllowCredentials: true,
-	}))
 
 	router.GET("/liveness", HealthCheck)
 	return router

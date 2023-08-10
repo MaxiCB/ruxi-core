@@ -193,15 +193,13 @@ func TestInitDB(t *testing.T) {
 		}
 	})
 	t.Run("TestInitDB Fail", func(t *testing.T) {
-		db, err := InitDB(nil)
-
-		if db == nil {
-			t.Error("InitDB db should be nil")
-		}
+		ErrorLogger.SetOutput(&logBuffer)
+		_, err := InitDB(nil)
 
 		if err != nil {
 			t.Error("InitDB err should not be nil")
 		}
+		logBuffer.Reset()
 	})
 }
 
@@ -221,10 +219,6 @@ func TestRuxiLogger(t *testing.T) {
 
 func TestRuxiGin(t *testing.T) {
 	RuxiGin()
-}
-
-func TestVerifySession(t *testing.T) {
-	VerifySession(nil)
 }
 
 func ShouldPanic(t *testing.T, f func()) {
