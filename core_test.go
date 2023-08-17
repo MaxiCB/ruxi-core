@@ -1,21 +1,16 @@
 package ruxicore
 
 import (
-	"bytes"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
 	"gorm.io/driver/postgres"
 )
-
-var logBuffer = bytes.Buffer{}
 
 func TestIf(t *testing.T) {
 	t.Run("Test If True", func(t *testing.T) {
@@ -52,122 +47,6 @@ func TestDBAuth(t *testing.T) {
 	})
 }
 
-func TestLogger(t *testing.T) {
-	t.Run("Log Error Fails", func(t *testing.T) {
-		func() {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("LogError should have panicked!")
-				}
-			}()
-			Log(LogMessage{ERROR, "testing", nil})
-		}()
-	})
-
-	t.Run("Log Info Fails", func(t *testing.T) {
-		func() {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("LogInfo should have panicked!")
-				}
-			}()
-			Log(LogMessage{INFO, "testing", nil})
-		}()
-	})
-
-	t.Run("Log Warning Fails", func(t *testing.T) {
-		func() {
-			defer func() {
-				if r := recover(); r == nil {
-					t.Errorf("LogWarning should have panicked!")
-				}
-			}()
-			Log(LogMessage{WARNING, "testing", nil})
-		}()
-	})
-
-	t.Run("Logger Init", func(t *testing.T) {
-		InitLogger("testing")
-
-		loggers := []*log.Logger{ErrorLogger, InfoLogger, WarningLogger}
-
-		for _, logger := range loggers {
-			if logger == nil {
-				t.Fatalf("%s logger nil", logger.Prefix())
-			}
-		}
-	})
-
-	t.Run("LogInfo no context", func(t *testing.T) {
-		InfoLogger.SetOutput(&logBuffer)
-		Log(LogMessage{INFO, "testing", nil})
-
-		want := "testing"
-		got := logBuffer.String()
-		logBuffer.Reset()
-
-		CheckStringContains(t, got, want)
-	})
-
-	t.Run("LogInfo context", func(t *testing.T) {
-		ctx := GetTestGinContext()
-		InfoLogger.SetOutput(&logBuffer)
-		Log(LogMessage{INFO, "testing", ctx})
-
-		want := "testing"
-		got := logBuffer.String()
-		logBuffer.Reset()
-
-		CheckStringContains(t, got, want)
-	})
-
-	t.Run("LogWarning no context", func(t *testing.T) {
-		WarningLogger.SetOutput(&logBuffer)
-		Log(LogMessage{WARNING, "testing", nil})
-
-		want := "testing"
-		got := logBuffer.String()
-		logBuffer.Reset()
-
-		CheckStringContains(t, got, want)
-	})
-
-	t.Run("LogWarning context", func(t *testing.T) {
-		ctx := GetTestGinContext()
-		WarningLogger.SetOutput(&logBuffer)
-		Log(LogMessage{WARNING, "testing", ctx})
-
-		want := "testing"
-		got := logBuffer.String()
-		logBuffer.Reset()
-
-		CheckStringContains(t, got, want)
-	})
-
-	t.Run("LogError no context", func(t *testing.T) {
-		ErrorLogger.SetOutput(&logBuffer)
-		Log(LogMessage{LogType: ERROR, Message: "testing"})
-
-		want := "testing"
-		got := logBuffer.String()
-		logBuffer.Reset()
-
-		CheckStringContains(t, got, want)
-	})
-
-	t.Run("LogError context", func(t *testing.T) {
-		ctx := GetTestGinContext()
-		ErrorLogger.SetOutput(&logBuffer)
-		Log(LogMessage{LogType: ERROR, Message: "testing", GinContext: ctx})
-
-		want := "testing"
-		got := logBuffer.String()
-		logBuffer.Reset()
-
-		CheckStringContains(t, got, want)
-	})
-}
-
 func TestHealthCheck(t *testing.T) {
 	t.Run("TestHealthCheck", func(t *testing.T) {
 		context := GetTestGinContext()
@@ -193,39 +72,16 @@ func TestInitDB(t *testing.T) {
 		}
 	})
 	t.Run("TestInitDB Fail", func(t *testing.T) {
-		ErrorLogger.SetOutput(&logBuffer)
 		_, err := InitDB(nil)
 
 		if err != nil {
 			t.Error("InitDB err should not be nil")
 		}
-		logBuffer.Reset()
-	})
-}
-
-func TestRuxiLogger(t *testing.T) {
-	ctx := GetTestGinContext()
-	RuxiLogger(&logBuffer)
-	RuxiLogFormatter(gin.LogFormatterParams{
-		TimeStamp:    time.Now(),
-		Method:       "POST",
-		Path:         "/test",
-		Request:      ctx.Request,
-		StatusCode:   200,
-		Latency:      time.Duration(10 * time.Millisecond),
-		ErrorMessage: "",
 	})
 }
 
 func TestRuxiGin(t *testing.T) {
 	RuxiGin()
-}
-
-func ShouldPanic(t *testing.T, f func()) {
-	t.Helper()
-	defer func() { _ = recover() }()
-	f()
-	t.Error("Should have panicked")
 }
 
 func CheckStringContains(t *testing.T, a, b string) {
