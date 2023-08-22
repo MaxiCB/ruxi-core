@@ -1,14 +1,17 @@
 package ruxicore
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"gorm.io/driver/postgres"
 )
 
@@ -62,20 +65,32 @@ func TestInitDB(t *testing.T) {
 	t.Run("TestInitDB", func(t *testing.T) {
 		mockDB, _, _ := sqlmock.New()
 		dialector := postgres.New(postgres.Config{
-			Conn:       mockDB,
-			DriverName: "postgres",
+			Conn: mockDB, DriverName: "postgres",
 		})
 		db, _ := InitDB(dialector)
-
 		if db.DB == nil {
 			t.Error("db.DB is nill")
 		}
 	})
 	t.Run("TestInitDB Fail", func(t *testing.T) {
-		_, err := InitDB(nil)
+		db, err := InitDB(nil)
+		fmt.Printf("db: %v\n", db)
+		fmt.Printf("err: %v\n", err)
 
 		if err != nil {
 			t.Error("InitDB err should not be nil")
+		}
+	})
+}
+
+func TestGetLogger(t *testing.T) {
+	t.Run("Test GetLogger", func(t *testing.T) {
+		logger := GetLogger("test")
+		if zerolog.TimeFieldFormat != time.RFC3339Nano {
+			t.Error("Logger TimeFieldFormat should be RFC3339Nano")
+		}
+		if logger.GetLevel() != zerolog.InfoLevel {
+			t.Error("Logger level should be InfoLevel")
 		}
 	})
 }

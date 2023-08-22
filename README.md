@@ -3,7 +3,6 @@
 ---
 [![codecov](https://codecov.io/gh/MaxiCB/ruxi-core/branch/master/graph/badge.svg?token=ZAA0KGZWGK)](https://codecov.io/gh/MaxiCB/ruxi-core)
 ![build](https://github.com/maxicb/ruxi-core/actions/workflows/go.yml/badge.svg)
-![release](https://github.com/maxicb/ruxi-core/actions/workflows/release.yml/badge.svg)
 [![semantic-release: angular](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 
 ---
