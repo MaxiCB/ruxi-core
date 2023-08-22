@@ -2,17 +2,22 @@ package ruxicore
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"log"
+	"net"
 	"net/http"
 	"os"
+	"runtime/debug"
+	"strconv"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
+
+var once sync.Once
+var log zerolog.Logger
 
 type DBAuth struct {
 	URL      string
@@ -27,27 +32,6 @@ type DB struct {
 	DB      *gorm.DB
 	Context context.Context
 }
-type LogLevel struct {
-	slug string
-}
-
-type LogMessage struct {
-	LogType    LogLevel
-	Message    string
-	GinContext *gin.Context //optional
-}
-
-var (
-	ERROR   = LogLevel{"ERROR"}
-	WARNING = LogLevel{"WARNING"}
-	INFO    = LogLevel{"INFO"}
-)
-
-var (
-	ErrorLogger   *log.Logger
-	InfoLogger    *log.Logger
-	WarningLogger *log.Logger
-)
 
 func If[T any](cond bool, vtrue, vfalse T) T {
 	if cond {
@@ -69,21 +53,8 @@ func GatherAuth() *DBAuth {
 }
 
 func InitDB(dialector gorm.Dialector) (*DB, error) {
-	newLogger := logger.New(
-		log.New(os.Stdout, "\r\n", log.LstdFlags),
-		logger.Config{
-			SlowThreshold:             time.Second,
-			LogLevel:                  logger.Silent,
-			IgnoreRecordNotFoundError: true,
-			ParameterizedQueries:      true,
-			Colorful:                  false,
-		},
-	)
-	gdb, err := gorm.Open(dialector, &gorm.Config{
-		Logger: newLogger,
-	})
+	gdb, err := gorm.Open(dialector)
 	if err != nil {
-		fmt.Fprintf(ErrorLogger.Writer(), "Unable to connect to database: %v\n", err)
 		return nil, err
 	}
 	db := DB{}
@@ -92,63 +63,55 @@ func InitDB(dialector gorm.Dialector) (*DB, error) {
 	return &db, nil
 }
 
+func GetLogger(appName string) zerolog.Logger {
+	once.Do(func() {
+		zerolog.TimeFieldFormat = time.RFC3339Nano
+
+		logLevel, err := strconv.Atoi(os.Getenv("LOG_LEVEL"))
+		if err != nil {
+			logLevel = int(zerolog.InfoLevel)
+		}
+
+		var output io.Writer = zerolog.ConsoleWriter{Out: os.Stdout}
+
+		log_server := os.Getenv("LOG_SERVER")
+		if log_server != "" {
+			server, err := net.ResolveTCPAddr("tcp", log_server)
+			if err != nil {
+				panic("Unable to resolve LOG_SERVER address")
+			}
+			conn, err := net.DialTCP("tcp", nil, server)
+			if err != nil {
+				panic("Unable to connect to LOG_SERVER address")
+			}
+			output = zerolog.MultiLevelWriter(os.Stdout, conn)
+		}
+
+		var gitRevision string
+
+		buildInfo, ok := debug.ReadBuildInfo()
+		if ok {
+			for _, v := range buildInfo.Settings {
+				if v.Key == "vcs.revision" {
+					gitRevision = v.Value
+					break
+				}
+			}
+		}
+
+		log = zerolog.New(output).Level(zerolog.Level(logLevel)).With().Timestamp().Str("app", appName).Str("git_revision", gitRevision).Str("go_version", buildInfo.GoVersion).Logger()
+	})
+
+	return log
+}
+
 func HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "UP"})
-}
-
-func RuxiLogFormatter(param gin.LogFormatterParams) string {
-	return fmt.Sprintf("[%s] \"%s %s %s %d %s \"%s\" %s\"\n",
-		param.TimeStamp.Format(time.RFC1123),
-		param.Method,
-		param.Path,
-		param.Request.Proto,
-		param.StatusCode,
-		param.Latency,
-		param.Request.UserAgent(),
-		param.ErrorMessage,
-	)
-}
-
-func RuxiLogger(writers ...io.Writer) gin.HandlerFunc {
-	gin.DefaultWriter = io.MultiWriter(writers...)
-	return gin.LoggerWithFormatter(RuxiLogFormatter)
-}
-
-func InitLogger(service_name string, writers ...io.Writer) {
-	ErrorLogger = log.New(io.MultiWriter(writers...), "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-	InfoLogger = log.New(io.MultiWriter(writers...), "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	WarningLogger = log.New(io.MultiWriter(writers...), "WARNING: ", log.Ldate|log.Ltime|log.Lshortfile)
-}
-
-func Log(message LogMessage) {
-	var logMessage string
-	if message.GinContext != nil {
-		request := message.GinContext.Request
-		request.ParseForm()
-		logMessage = fmt.Sprintf("[%s] '%s' {%s} - %s",
-			request.Method,
-			request.URL,
-			request.PostForm,
-			message.Message,
-		)
-	} else {
-		logMessage = message.Message
-	}
-
-	switch message.LogType.slug {
-	case ERROR.slug:
-		ErrorLogger.Println(logMessage)
-	case INFO.slug:
-		InfoLogger.Println(logMessage)
-	case WARNING.slug:
-		WarningLogger.Println(logMessage)
-	}
 }
 
 func RuxiGin() *gin.Engine {
 	router := gin.Default()
 	gin.DisableConsoleColor()
-	router.Use(RuxiLogger())
 
 	router.GET("/liveness", HealthCheck)
 	return router
