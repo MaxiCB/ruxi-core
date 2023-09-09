@@ -4,28 +4,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/postgres"
 )
-
-func TestIf(t *testing.T) {
-	t.Run("Test If True", func(t *testing.T) {
-		cond := If[bool]("test" == "test", true, false)
-		if !cond {
-			t.Errorf("Expected true")
-		}
-	})
-	t.Run("Test If False", func(t *testing.T) {
-		cond := If[bool]("test" == "not", true, false)
-		if cond {
-			t.Errorf("Expected true")
-		}
-	})
-}
 
 func TestDBAuth(t *testing.T) {
 	t.Run("TestDBAuth", func(t *testing.T) {
@@ -38,12 +27,12 @@ func TestDBAuth(t *testing.T) {
 
 		dbAuth := GatherAuth()
 
-		CheckStringContains(t, dbAuth.URL, "test")
-		CheckStringContains(t, dbAuth.Host, "test")
-		CheckStringContains(t, dbAuth.Port, "test")
-		CheckStringContains(t, dbAuth.Username, "test")
-		CheckStringContains(t, dbAuth.Password, "test")
-		CheckStringContains(t, dbAuth.Name, "test")
+		assert.Equal(t, "test", dbAuth.URL)
+		assert.Equal(t, "test", dbAuth.Host)
+		assert.Equal(t, "test", dbAuth.Port)
+		assert.Equal(t, "test", dbAuth.Username)
+		assert.Equal(t, "test", dbAuth.Password)
+		assert.Equal(t, "test", dbAuth.Name)
 	})
 }
 
@@ -82,6 +71,20 @@ func TestInitDB(t *testing.T) {
 
 func TestRuxiGin(t *testing.T) {
 	RuxiGin()
+}
+
+// Test that the GetLogger function returns a logger with default settings when called with a valid app name
+func TestGetLogger_ReturnsLoggerWithDefaultSettings(t *testing.T) {
+	// Set up test environment
+	os.Setenv("LOG_LEVEL", "255")
+	os.Setenv("LOG_SERVER", "")
+
+	// Call the GetLogger function
+	logger := GetLogger("myApp")
+
+	// Assert that the logger has the expected default settings
+	assert.Equal(t, zerolog.DebugLevel, logger.GetLevel())
+	assert.Equal(t, time.RFC3339Nano, zerolog.TimeFieldFormat)
 }
 
 func CheckStringContains(t *testing.T, a, b string) {

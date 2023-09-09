@@ -6,8 +6,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"runtime/debug"
-	"strconv"
 	"sync"
 	"time"
 
@@ -33,22 +33,32 @@ type DB struct {
 	Context context.Context
 }
 
-func If[T any](cond bool, vtrue, vfalse T) T {
-	if cond {
-		return vtrue
-	}
-	return vfalse
-}
-
 func GatherAuth() *DBAuth {
-	dbAuth := DBAuth{
-		os.Getenv("DATABASE_URL"),
-		os.Getenv("DB_HOST"),
-		os.Getenv("DB_PORT"),
-		os.Getenv("DB_USERNAME"),
-		os.Getenv("DB_PASSWORD"),
-		os.Getenv("DB"),
+	// GatherAuth retrieves the authentication details for the database connection.
+	// It retrieves the necessary information from environment variables and creates a DBAuth struct with the gathered values.
+
+	// Retrieve the values of the database authentication details from the corresponding environment variables.
+	dbAuth := DBAuth{}
+	if url := os.Getenv("DATABASE_URL"); url != "" {
+		dbAuth.URL = url
 	}
+	if host := os.Getenv("DB_HOST"); host != "" {
+		dbAuth.Host = host
+	}
+	if port := os.Getenv("DB_PORT"); port != "" {
+		dbAuth.Port = port
+	}
+	if username := os.Getenv("DB_USERNAME"); username != "" {
+		dbAuth.Username = username
+	}
+	if password := os.Getenv("DB_PASSWORD"); password != "" {
+		dbAuth.Password = password
+	}
+	if db := os.Getenv("DB"); db != "" {
+		dbAuth.Name = db
+	}
+
+	// Return a pointer to the created DBAuth struct.
 	return &dbAuth
 }
 
@@ -63,45 +73,49 @@ func InitDB(dialector gorm.Dialector) (*DB, error) {
 	return &db, nil
 }
 
+func GetGitRevision() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if ok {
+		for _, v := range buildInfo.Settings {
+			if v.Key == "vcs.revision" {
+				return v.Value
+			}
+		}
+	}
+	return ""
+}
+
+func GetGoVersion() string {
+	return runtime.Version()
+}
+
 func GetLogger(appName string) zerolog.Logger {
 	once.Do(func() {
 		zerolog.TimeFieldFormat = time.RFC3339Nano
 
-		logLevel, err := strconv.Atoi(os.Getenv("LOG_LEVEL"))
+		logLevel, err := zerolog.ParseLevel(os.Getenv("LOG_LEVEL"))
 		if err != nil {
-			logLevel = int(zerolog.InfoLevel)
+			logLevel = zerolog.DebugLevel
 		}
 
 		var output io.Writer = zerolog.ConsoleWriter{Out: os.Stdout}
+		log = zerolog.New(output).Level(zerolog.Level(logLevel)).With().Timestamp().Str("app", appName).Logger()
 
 		log_server := os.Getenv("LOG_SERVER")
 		if log_server != "" {
 			server, err := net.ResolveTCPAddr("tcp", log_server)
 			if err != nil {
-				panic("Unable to resolve LOG_SERVER address")
+				log.Fatal().Err(err).Msg("Unable to resolve LOG_SERVER address")
 			}
 			conn, err := net.DialTCP("tcp", nil, server)
 			if err != nil {
-				panic("Unable to connect to LOG_SERVER address")
+				log.Fatal().Err(err).Msg("Unable to dial LOG_SERVER address")
 			}
 			output = zerolog.MultiLevelWriter(os.Stdout, conn)
 		}
 
-		var gitRevision string
-
-		buildInfo, ok := debug.ReadBuildInfo()
-		if ok {
-			for _, v := range buildInfo.Settings {
-				if v.Key == "vcs.revision" {
-					gitRevision = v.Value
-					break
-				}
-			}
-		}
-
-		log = zerolog.New(output).Level(zerolog.Level(logLevel)).With().Timestamp().Str("app", appName).Str("git_revision", gitRevision).Str("go_version", buildInfo.GoVersion).Logger()
+		log = zerolog.New(output).Level(zerolog.Level(logLevel)).With().Timestamp().Str("app", appName).Str("git_revision", GetGitRevision()).Str("go_version", GetGoVersion()).Logger()
 	})
-
 	return log
 }
 
